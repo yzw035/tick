@@ -6,12 +6,12 @@ services:
     container_name: dm-ticket
     restart: always
     privileged: true
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 600M
-        reservations:
-          cpus: '0.25'
-          memory: 300M
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '0.80'
+    #       memory: 600M
+    #     reservations:
+    #       cpus: '0.50'
+    #       memory: 300M
 

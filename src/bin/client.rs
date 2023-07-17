@@ -25,7 +25,8 @@ async fn main() -> Result<()> {
     pretty_env_logger::init();
 
     let webdriver_url = env::var("WEBDRIVER_URL").unwrap();
-    let client = Client::new(webdriver_url);
+    let client = Client::new(webdriver_url).await?;
+
     client.run().await?;
     Ok(())
 }

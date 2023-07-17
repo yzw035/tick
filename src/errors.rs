@@ -20,11 +20,11 @@ pub(crate) enum ClientError {
     #[error("无法成功连接webdriver")]
     WebdriverConnectionError,
 
-    #[error("获取登录二维码错误")]
-    GetQRCodeError,
-
     #[error("登录失败")]
     LoginFailed,
+
+    #[error("cookie有错误")]
+    CookieError,
 }
 
 // Api返回的错误信息

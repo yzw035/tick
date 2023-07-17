@@ -13,6 +13,8 @@ const KEY_BX_UA: &str = "bx_ua";
 
 const KEY_UMID_TOKEN: &str = "bx_umid_token";
 
+const KEY_UA: &str = "ua";
+
 pub struct Server {
     webdriver_url: String,
     driver: WebDriver,
@@ -101,6 +103,14 @@ impl Server {
         Ok(bx_umid_token)
     }
 
+    pub(crate) async fn get_ua(&self) -> Result<String> {
+        let js = "return window.__nc.__uab.getUA();";
+
+        let bx_umid_token = self.exec_js(js).await?;
+
+        Ok(bx_umid_token)
+    }
+
     pub(crate) async fn get_token_num(&self) -> Result<u32> {
         let mut conn = self.client.get_async_connection().await?;
 
@@ -121,6 +131,14 @@ impl Server {
         let mut conn = self.client.get_async_connection().await?;
 
         conn.lpush(KEY_UMID_TOKEN, value).await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn insert_ua(&self, value: String) -> Result<()> {
+        let mut conn = self.client.get_async_connection().await?;
+
+        conn.lpush(KEY_UA, value).await?;
 
         Ok(())
     }
@@ -167,6 +185,9 @@ impl Server {
                         }
                         if let Ok(bx_ua) = self.get_bx_ua().await {
                             let _ = self.insert_bx_ua(bx_ua).await;
+                        }
+                        if let Ok(ua) = self.get_ua().await {
+                            let _ = self.insert_ua(ua).await;
                         }
                     }
                     info!("成功获取{}个token...", batch_token_num);

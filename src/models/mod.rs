@@ -1,12 +1,13 @@
 pub mod order;
 pub mod perform;
+pub mod qrcode;
 pub mod task;
 pub mod ticket;
 pub mod user;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use serde_json::value;
+use serde_json::{value, Value};
 
 // cookie token.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -23,6 +24,21 @@ pub struct DmRes {
     pub data: value::Value,
     pub ret: Vec<String>,
     pub v: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DmLoginResContent {
+    pub status: i32,
+    pub success: bool,
+    pub data: Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DmLoginRes {
+    #[serde(rename = "hasError")]
+    pub has_error: bool,
+
+    pub content: DmLoginResContent,
 }
 
 // 大麦API公共Params

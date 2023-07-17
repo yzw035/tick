@@ -23,6 +23,12 @@ impl TokenClient {
         Ok(bx_ua)
     }
 
+    pub async fn get_ua(&self) -> Result<String> {
+        let mut con = self.client.get_async_connection().await?;
+        let bx_ua: String = con.lpop("ua", None).await?;
+        Ok(bx_ua)
+    }
+
     // 获取大麦请求头bx-umidtoken
     pub async fn get_bx_token(&self) -> Result<String> {
         let mut con = self.client.get_async_connection().await?;

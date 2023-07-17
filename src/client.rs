@@ -1,7 +1,10 @@
-use std::{env, time::Duration};
+use std::{
+    io::{self, Write},
+    time::Duration,
+};
 
 use crate::{
-    clients::dm::DmClient,
+    clients::{dm::DmClient, login::LoginClient},
     errors::ClientError,
     models::{
         perform::{PerformForm, PerformInfo, PerformItem, PerformParams, SkuItem},
@@ -15,19 +18,93 @@ use crate::{
 };
 use anyhow::Result;
 use chrono::{Local, TimeZone};
-use fast_qr::{QRBuilder, QRCode};
-use log::{debug, info};
+
+use log::{debug, error, info};
 use terminal_menu::{button, label, menu, mut_menu, numeric, run};
-use thirtyfour::{prelude::ElementQueryable, By, DesiredCapabilities, WebDriver};
-use tokio::{fs, io::AsyncWriteExt};
+use thirtyfour::{
+    cookie::SameSite, prelude::ElementQueryable, By, Cookie, DesiredCapabilities, WebDriver,
+};
 
 pub struct Client {
     webdriver_url: String,
+    client: LoginClient,
 }
 
 impl Client {
-    pub fn new(webdriver_url: String) -> Self {
-        Self { webdriver_url }
+    pub async fn new(webdriver_url: String) -> Result<Self> {
+        Ok(Self {
+            webdriver_url,
+            client: LoginClient::new().await?,
+        })
+    }
+
+    pub async fn qrcode_login(&self) -> Result<String> {
+        info!("正在获取二维码...\n");
+        let qrcode_data = match self.client.generate_qrcode().await {
+            Ok(data) => {
+                debug!("Get qrcode data:{:?}", data);
+                data
+            }
+            Err(e) => {
+                error!("Fail to get qrcode data, error:{:?}", e);
+                return Err(e);
+            }
+        };
+
+        let qrcode = match self.client.get_qrcode(qrcode_data.code_content).await {
+            Ok(code) => {
+                debug!("success to get qrcode!");
+                code
+            }
+            Err(e) => {
+                error!("Fail to get qrcode, error:{:?}", e);
+                return Err(e);
+            }
+        };
+
+        println!("{}\n", qrcode.to_str());
+
+        let t = qrcode_data.t;
+        let ck = qrcode_data.ck.clone();
+
+        let max_times = 60 * 5;
+
+        for i in 0..max_times {
+            let qrcode_scan_status = self.client.get_login_result(t, ck.clone()).await?;
+
+            match qrcode_scan_status.qrcode_status.as_str() {
+                "NEW" => {
+                    print!("\r请使用大麦APP扫码, 倒计时:{}秒\t", max_times - i);
+                    let _ = io::stdout().flush();
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                "SCANED" => {
+                    print!("\r##########请点击确认登录#######\t\t");
+                    let _ = io::stdout().flush();
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                "CONFIRMED" => {
+                    let cookie2 = qrcode_scan_status.cookie2.unwrap();
+                    let return_url = qrcode_scan_status.return_url.unwrap();
+                    let st = qrcode_scan_status.st.unwrap();
+                    let _ = self.client.get_cookie(&cookie2, return_url, st).await?;
+                    println!("\r\n登录成功");
+                    return Ok(cookie2);
+                }
+                "EXPIRED" => {
+                    print!("\r\t二维码已过期, 请重新执行程序...");
+                    return Err(ClientError::LoginFailed.into());
+                }
+                _ => {
+                    error!("未知状态:{:?}, 退出...", qrcode_scan_status);
+                    return Err(ClientError::LoginFailed.into());
+                }
+            }
+        }
+
+        info!("二维码已过期, 请重新执行程序...");
+
+        Err(ClientError::LoginFailed.into())
     }
 
     pub async fn get_driver(&self, webdriver_url: String) -> Result<WebDriver> {
@@ -57,123 +134,22 @@ impl Client {
         Ok(driver)
     }
 
-    pub async fn get_qrcode(&self, url: &str) -> Result<QRCode> {
-        let qrcode_path = env::var("QRCODE_PATH").unwrap();
-
-        let client = reqwest::Client::builder().build()?;
-
-        let mut source = client.get(url).send().await?;
-
-        let mut dest = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&qrcode_path)
-            .await?;
-
-        while let Some(chunk) = source.chunk().await? {
-            dest.write_all(&chunk).await?;
-        }
-
-        let img = image::open(&qrcode_path)?.to_luma8();
-
-        let mut img = rqrr::PreparedImage::prepare(img);
-
-        let grids = img.detect_grids();
-        let (_, content) = grids[0].decode()?;
-
-        let qrcode = QRBuilder::new(content).build().unwrap();
-
-        let _ = fs::remove_file(qrcode_path).await;
-
-        Ok(qrcode)
-    }
-
     pub async fn login(&self) -> Result<(String, String)> {
-        info!("正在获取登录二维码...");
-
-        debug!("正在打开浏览器...");
+        let cookie2 = self.qrcode_login().await?;
         let driver = self.get_driver(self.webdriver_url.clone()).await?;
+        let mut c = Cookie::new("cookie2", cookie2);
+        c.set_domain("damai.cn");
+        c.set_path("/");
+        c.set_same_site(Some(SameSite::Lax));
 
-        // 进入登录页面
-        let login_url = "https://passport.damai.cn/login?ru=https%3A%2F%2Fwww.damai.cn%2F";
-        debug!("正在打开登录页面, url: {}", login_url);
-        driver
-            .goto(login_url)
-            .await
-            .map_err(|_| ClientError::GetQRCodeError)?;
+        driver.goto("https://m.damai.cn/").await?;
+        let _ = driver.add_cookie(c).await;
 
-        // 等待出现登录框
-        debug!("查找登录iframe!");
-        let iframe_name = "alibaba-login-iframe";
-        let _ = driver
-            .query(By::ClassName(iframe_name))
-            .wait(Duration::from_secs(10), Duration::from_millis(100))
-            .first()
-            .await;
-        let _ = driver.enter_frame(0).await;
-
-        // 选择扫码登录
-        debug!("点击扫码登录!");
-        let element_xpath = r#"//*[@id="login-tabs"]/div[3]"#;
-        let element = driver.query(By::XPath(element_xpath)).first().await?;
-        element.click().await?;
-
-        // 获取二维码
-        debug!("获取二维码!");
-        let element_selector = r#"#login > div.login-content.nc-outer-box > div > div:nth-child(2) > div.qrcode-img > img"#;
-        let element = driver.query(By::Css(element_selector)).first().await?;
-        let src = element
-            .attr("src")
-            .await
-            .map_err(|_| ClientError::GetQRCodeError)?;
-        if src.is_none() {
-            let _ = driver.quit().await;
-            return Ok(("".to_string(), "".to_string()));
-        }
-        let url = src.unwrap();
-
-        let qrcode = self.get_qrcode(&url).await?;
-
-        qrcode.print();
-
-        info!("请打开大麦APP扫码登录...");
-
-        let css = r#"body > div.dm-header-wrap > div > div.right-header > div.box-header.user-header > a.J_userinfo_name > div"#;
-
-        let mut nickname = String::new();
-        let mut login_success = false;
-        for _ in 0..60 {
-            let res = driver
-                .query(By::Css(css))
-                .wait(Duration::from_secs(5), Duration::from_millis(100))
-                .first()
-                .await;
-            if res.is_err() {
-                continue;
-            }
-            let element = res.unwrap();
-            let text = element.text().await;
-            if text.is_err() {
-                continue;
-            }
-            nickname = text.unwrap();
-            login_success = true;
-            break;
-        }
-
-        if !login_success {
-            info!("扫码登录未成功, 退出...");
-            driver.quit().await?;
-            return Ok(("".to_string(), "".to_string()));
-        }
-
-        info!("用户昵称:{}, 登录成功...", nickname);
-
-        debug!("跳到h5用户信息页面!");
         let h5_url = "https://m.damai.cn/damai/mine/my/index.html?spm=a2o71.home.top.duserinfo";
         driver.goto(h5_url).await?;
 
         debug!("等待页面加载完成, 获取cookie!");
+
         let css = r#"body > div.my > div.my-hd > div.user-name > div.nickname"#;
         let _ = driver
             .query(By::Css(css))
@@ -193,7 +169,7 @@ impl Client {
 
         let _ = driver.quit().await;
 
-        Ok((cookie_string, nickname))
+        Ok((cookie_string, "".to_string()))
     }
 
     // 获取演唱会ID
@@ -322,7 +298,35 @@ impl Client {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let (cookie, nickname) = self.login().await.map_err(|_| ClientError::LoginFailed)?;
+        let m = menu(vec![
+            label("请选择登录方式:"),
+            button("1.扫码登录"),
+            button("2.输入cookie"),
+        ]);
+        run(&m);
+
+        let selected = mut_menu(&m).selected_item_index();
+
+        let (cookie, nickname) = match selected {
+            1 => {
+                let (cookie, nickname) =
+                    self.login().await.map_err(|_| ClientError::LoginFailed)?;
+                (cookie, nickname)
+            }
+            2 => {
+                let mut cookie = String::new();
+                println!("请输入cookie:");
+                let _ = std::io::stdin().read_line(&mut cookie).expect("输入错误!");
+                (cookie, "xxx".to_string())
+            }
+            _ => {
+                panic!("error: unexpected");
+            }
+        };
+
+        if !cookie.contains("cookie2") {
+            return Err(ClientError::CookieError.into());
+        }
 
         let ticket = self.get_ticket_id().await?;
 

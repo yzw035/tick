@@ -30,12 +30,15 @@ FROM --platform=$TARGETPLATFORM debian:bullseye as runtime
 
 ENV TZ=Asia/Shanghai
 
+COPY scripts/start.sh /usr/bin/start
+
 RUN apt update  \
     && apt install -y tzdata supervisor redis chromium-driver procps \
     && echo "${TZ}" > /etc/timezone \
     && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && apt clean \ 
-    && rm -rf /var/cache/apt/*
+    && rm -rf /var/cache/apt/* \
+    && chmod 755 /usr/bin/start
 
 WORKDIR /src/
 
@@ -43,8 +46,7 @@ COPY --from=builder /usr/src/dm-ticket/target/release/dm-server /usr/bin/dm-serv
 
 COPY --from=builder /usr/src/dm-ticket/target/release/dm-client /usr/bin/dm-client
 
-COPY scripts/start.sh /usr/bin/start
-
 COPY supervisord.conf /etc/supervisord.conf
+
 
 CMD ["/usr/bin/start"]
