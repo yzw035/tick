@@ -88,7 +88,7 @@ impl Client {
                     let return_url = qrcode_scan_status.return_url.unwrap();
                     let st = qrcode_scan_status.st.unwrap();
                     let _ = self.client.get_cookie(&cookie2, return_url, st).await?;
-                    println!("\r\n登录成功");
+                    println!("\r\n扫码登录成功!");
                     return Ok(cookie2);
                 }
                 "EXPIRED" => {
@@ -136,6 +136,8 @@ impl Client {
 
     pub async fn login(&self) -> Result<(String, String)> {
         let cookie2 = self.qrcode_login().await?;
+
+        info!("正在获取cookie...");
         let driver = self.get_driver(self.webdriver_url.clone()).await?;
         let mut c = Cookie::new("cookie2", cookie2);
         c.set_domain("damai.cn");
@@ -147,8 +149,6 @@ impl Client {
 
         let h5_url = "https://m.damai.cn/damai/mine/my/index.html?spm=a2o71.home.top.duserinfo";
         driver.goto(h5_url).await?;
-
-        debug!("等待页面加载完成, 获取cookie!");
 
         let css = r#"body > div.my > div.my-hd > div.user-name > div.nickname"#;
         let _ = driver
@@ -315,7 +315,7 @@ impl Client {
             }
             2 => {
                 let mut cookie = String::new();
-                println!("请输入cookie:");
+                println!("\r\n请输入cookie:");
                 let _ = std::io::stdin().read_line(&mut cookie).expect("输入错误!");
                 (cookie, "xxx".to_string())
             }
@@ -327,7 +327,7 @@ impl Client {
         if !cookie.contains("cookie2") {
             return Err(ClientError::CookieError.into());
         }
-
+        info!("正在获取演唱会ID");
         let ticket = self.get_ticket_id().await?;
 
         let perform = self.get_perform(&ticket.ticket_id.to_string()).await?;

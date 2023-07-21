@@ -70,6 +70,8 @@
 
 - 优先购时长: 正式抢购时间 - 优先购时间, 默认: 0, 单位分钟。
 
+  <img src="./imgs/example.png" width = "400" height = "200" alt="数量" align=center />
+
 ### 使用Rust
 
 - [Rust官网](https://www.rust-lang.org/)

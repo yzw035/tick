@@ -54,7 +54,14 @@ pub async fn get_token(cookie: &str) -> Result<DmToken> {
 impl DmClient {
     // 初始化请求客户端
     pub async fn new(cookie: Option<String>, token_client: Option<TokenClient>) -> Result<Self> {
-        let cookie = cookie.unwrap_or("".to_string());
+        let cookie = cookie
+            .unwrap_or("".to_string())
+            .replace(' ', "")
+            .replace('\n', "")
+            .split(';')
+            .filter(|e| !e.starts_with("_m_h5_tk"))
+            .collect::<Vec<&str>>()
+            .join(";");
 
         let token = get_token(&cookie).await?;
 
