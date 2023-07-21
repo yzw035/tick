@@ -41,7 +41,7 @@
   - 1.扫码登录: 
     
     <img src="./imgs/1.png" width = "400" height = "300" alt="扫码登录" align=center />
-  - 2.输入cookie, 自行在[h5](https://m.damai.cn/)提取cookie, 或者配合项目[dm-login]([https://m.damai.cn/](https://github.com/ClassmateLin/dm-login))使用账号密码登录。
+  - 2.输入cookie, 自行在[h5](https://m.damai.cn/)提取cookie, 或者配合项目[dm-login](https://github.com/ClassmateLin/dm-login)使用账号密码登录。
 
 - 选择演唱会: 
 
