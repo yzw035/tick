@@ -350,7 +350,7 @@ impl Client {
         let ticket_num = mut_menu(&m).numeric_value("购票数量");
 
         let m = menu(vec![
-            numeric("重试次数", 5.0, Some(1.0), None, Some(10.0)),
+            numeric("重试次数", 50.0, Some(1.0), None, Some(100.0)),
             button("确定"),
         ]);
         run(&m);
